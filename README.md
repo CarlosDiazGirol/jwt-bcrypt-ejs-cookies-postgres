@@ -1094,3 +1094,243 @@ Esto permite probar controladores sin levantar Express ni conectar a PostgreSQL.
 ```bash
 npm test
 ```
+
+## Paso a paso: Swagger con Postman
+
+### 1. Instalar dependencias
+
+```bash
+npm install swagger-ui-express yamljs
+```
+
+Estas se usan para:
+
+- `swagger-ui-express`: mostrar la documentacion en el navegador.
+- `yamljs`: cargar el archivo `openapi.yaml`.
+
+### 2. Instalar dependencias de desarrollo
+
+```bash
+npm install --save-dev postman-to-openapi
+```
+
+Esta se usa para convertir la coleccion de Postman a OpenAPI.
+
+### 3. Añadir en `app.js`
+
+En `src/app.js`:
+
+```js
+const swaggerUi = require("swagger-ui-express");
+const YAML = require("yamljs");
+```
+
+Y cargar el YAML:
+
+```js
+const openapiDocument = YAML.load(path.join(process.cwd(), "docs", "openapi.yaml"));
+```
+
+Y montar la ruta:
+
+```js
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapiDocument));
+```
+
+Con eso la documentacion se vera en:
+
+```txt
+http://localhost:3000/docs
+```
+
+### 4. Ir a Postman y exportar lo necesario
+
+En Postman:
+
+- deja preparadas las rutas que quieres documentar
+- exporta la coleccion
+- guardala con este nombre:
+
+```txt
+postman.json
+```
+
+### 5. Crear carpeta `docs`
+
+Dentro de la raiz del proyecto crea:
+
+```txt
+docs/
+```
+
+Y mete dentro:
+
+```txt
+docs/postman.json
+```
+
+Despues crea:
+
+```txt
+docs/generate-openapi.js
+```
+
+Con este contenido:
+
+```js
+const postmanToOpenApi = require("postman-to-openapi");
+
+async function generateOpenApi() {
+  try {
+    await postmanToOpenApi("./docs/postman.json", "./docs/openapi.yaml", {
+      defaultTag: "General",
+      servers: [
+        {
+          url: "/",
+          description: "API same origin",
+        },
+      ],
+    });
+
+    console.log("OpenAPI generado en ./docs/openapi.yaml");
+  } catch (error) {
+    console.error("Error generando OpenAPI:", error.message || error);
+    process.exit(1);
+  }
+}
+
+generateOpenApi();
+```
+
+### 6. Crear en `package.json` el script de docs
+
+En `package.json`:
+
+```json
+"docs": "node docs/generate-openapi.js"
+```
+
+### 7. Ejecutar el script de docs
+
+```bash
+npm run docs
+```
+
+Eso genera:
+
+```txt
+docs/openapi.yaml
+```
+
+### 8. Meter en YAML la parte de seguridad
+
+Al final del todo del archivo `docs/openapi.yaml`, añade:
+
+```yaml
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+```
+
+Eso define que tu API usa token bearer tipo JWT.
+
+### 9. Justo despues de cada ruta protegida, meter `security`
+
+En cada ruta que necesite token, justo despues de `summary`, añade:
+
+```yaml
+security:
+  - bearerAuth: []
+```
+
+Ejemplo:
+
+```yaml
+/api/books:
+  post:
+    tags:
+      - General
+    summary: CREATE-books
+    security:
+      - bearerAuth: []
+```
+
+Hazlo en las rutas protegidas, por ejemplo:
+
+- `GET /api/books`
+- `POST /api/books`
+- `PUT /api/books/{id}`
+- `DELETE /api/books/{id}`
+- `GET /api/users-with-books`
+
+No hace falta en:
+
+- `POST /api/login`
+- `POST /api/register`
+- `GET /health`
+
+### 10. En las rutas con id, añadir `parameters`
+
+En las rutas que llevan `id`, cambia por ejemplo:
+
+```yaml
+/api/books/7:
+```
+
+por:
+
+```yaml
+/api/books/{id}:
+```
+
+Y dentro del metodo (`put` o `delete`), añade:
+
+```yaml
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: string
+```
+
+Ejemplo completo:
+
+```yaml
+/api/books/{id}:
+  put:
+    tags:
+      - General
+    summary: UPDATE-book
+    security:
+      - bearerAuth: []
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+```
+
+Y para `delete` igual.
+
+### 11. Resultado final
+
+Con eso ya tienes:
+
+- Postman exportado
+- OpenAPI generado
+- Swagger montado en `/docs`
+- rutas protegidas con bearer auth
+- rutas con `id` editables desde Swagger
+
+Cuando recargues `/docs`, deberias ver el boton:
+
+```txt
+Authorize
+```
+
+Y desde ahi meter el token para probar las rutas seguras.

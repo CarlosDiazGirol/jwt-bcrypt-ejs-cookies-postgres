@@ -9,3 +9,4 @@ describe('Operaciones matemáticas', () => {
     expect(subtract(5, 2)).toBe(3);
   });
 });
+
